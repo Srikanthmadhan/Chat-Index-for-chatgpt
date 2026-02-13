@@ -1,6 +1,21 @@
 (() => {
 
-  // === TOGGLE ON / OFF ===
+  // ==============================
+  // DOMAIN + ROUTE GUARD
+  // ==============================
+  const validHost =
+    location.hostname.includes("chat.openai.com") ||
+    location.hostname.includes("chatgpt.com");
+
+  if (!validHost) return;
+
+  function inConversation() {
+    return /^\/c\//.test(location.pathname);
+  }
+
+  // ==============================
+  // TOGGLE
+  // ==============================
   if (window.__goatedSidebar) {
     window.__goatedSidebar.remove();
     return;
@@ -9,41 +24,56 @@
   const HOST_ID = "goatedSidebarHost";
   let mainObserver = null;
   let intersectionObserver = null;
+  let rootObserver = null;
 
-  // ---------- Utilities ----------
-  const debounce = (fn, t=200) => {
+  // ==============================
+  // UTILITIES
+  // ==============================
+  const debounce = (fn, t = 200) => {
     let id;
-    return (...a)=>{ clearTimeout(id); id=setTimeout(()=>fn(...a), t); };
+    return (...a) => {
+      clearTimeout(id);
+      id = setTimeout(() => fn(...a), t);
+    };
   };
 
-  const hash = (s)=>{
-    let h=2166136261>>>0;
-    for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);}
-    return (h>>>0).toString(36);
+  const hash = (s) => {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(36);
   };
 
-  function isUserTurn(el){
-    const t=(el.innerText||"").trim();
-    return /^[\s\r\n]*you\b/i.test(t)||/\byou(?:\s+said)?\s*:/i.test(t);
+  function isUserTurn(el) {
+    const t = (el.innerText || "").trim();
+    return /^[\s\r\n]*you\b/i.test(t) || /\byou(?:\s+said)?\s*:/i.test(t);
   }
 
-  function extractTitle(el){
-    let t=(el.innerText||"").replace(/\r/g,"\n");
-    t=t.replace(/(^|\n)\s*(you(?:\s+said)?\s*:?)\s*/ig,"$1");
-    t=t.replace(/\n+/g,"\n").trim();
-    return t.split("\n")[0].replace(/\s+/g," ").trim();
+  function extractTitle(el) {
+    let t = (el.innerText || "").replace(/\r/g, "\n");
+    t = t.replace(/(^|\n)\s*(you(?:\s+said)?\s*:?)\s*/ig, "$1");
+    t = t.replace(/\n+/g, "\n").trim();
+    return t.split("\n")[0].replace(/\s+/g, " ").trim();
   }
 
-  // ---------- Sidebar UI ----------
-  function buildSidebar(){
+  // ==============================
+  // BUILD SIDEBAR
+  // ==============================
+  function buildSidebar() {
+
+    if (!inConversation()) return;
+
     document.getElementById(HOST_ID)?.remove();
 
-    const host=document.createElement("div");
-    host.id=HOST_ID;
+    const host = document.createElement("div");
+    host.id = HOST_ID;
     document.documentElement.appendChild(host);
-    const shadow=host.attachShadow({mode:"open"});
 
-    shadow.innerHTML=`
+    const shadow = host.attachShadow({ mode: "open" });
+
+    shadow.innerHTML = `
       <style>
         .wrap{
           --bg:#0f0f0f;--bg-sec:#080808;--border:#222;
@@ -118,44 +148,63 @@
       </div>
     `;
 
-    const wrap=shadow.getElementById("wrap");
-    shadow.getElementById("slideBtn").onclick=()=>{
-      const collapsed=wrap.classList.toggle("collapsed");
-      shadow.getElementById("slideBtn").innerHTML=collapsed?"«":"»";
-    };
-    shadow.getElementById("themeBtn").onclick=()=>{
-      const light=wrap.classList.toggle("light");
-      shadow.getElementById("themeBtn").innerHTML=light?"☀️":"🌙";
+    const wrap = shadow.getElementById("wrap");
+    const slideBtn = shadow.getElementById("slideBtn");
+    const themeBtn = shadow.getElementById("themeBtn");
+
+    // Restore persisted state
+    if (localStorage.getItem("goated_theme") === "light") {
+      wrap.classList.add("light");
+      themeBtn.innerHTML = "☀️";
+    }
+
+    if (localStorage.getItem("goated_collapsed") === "true") {
+      wrap.classList.add("collapsed");
+      slideBtn.innerHTML = "«";
+    }
+
+    slideBtn.onclick = () => {
+      const collapsed = wrap.classList.toggle("collapsed");
+      slideBtn.innerHTML = collapsed ? "«" : "»";
+      localStorage.setItem("goated_collapsed", collapsed);
     };
 
-    return host;
+    themeBtn.onclick = () => {
+      const light = wrap.classList.toggle("light");
+      themeBtn.innerHTML = light ? "☀️" : "🌙";
+      localStorage.setItem("goated_theme", light ? "light" : "dark");
+    };
   }
 
-  function render(){
-    const host=document.getElementById(HOST_ID);
-    if(!host)return;
-    const shadow=host.shadowRoot;
-    const list=shadow.getElementById("list");
-    list.innerHTML="";
+  function render() {
+    if (!inConversation()) return;
 
-    const turns=Array.from(document.querySelectorAll(
-      'main [data-testid*="conversation-turn"], main article, main [role="listitem"]'
-    ));
-    const users=turns.filter(isUserTurn);
+    const host = document.getElementById(HOST_ID);
+    if (!host) return;
 
-    users.forEach(turn=>{
-      const id=hash(turn.innerText||"");
-      turn.dataset.goatedId=id;
+    const shadow = host.shadowRoot;
+    const list = shadow.getElementById("list");
+    list.innerHTML = "";
 
-      const div=document.createElement("div");
-      div.className="entry";
-      div.dataset.target=id;
+    const turns = Array.from(
+      document.querySelectorAll('main [data-testid*="conversation-turn"], main article, main [role="listitem"]')
+    );
 
-      const title=extractTitle(turn);
-      div.textContent=title.length>60?title.slice(0,60)+"…":title;
+    const users = turns.filter(isUserTurn);
 
-      div.onclick=()=>{
-        turn.scrollIntoView({behavior:"smooth",block:"center"});
+    users.forEach(turn => {
+      const id = hash(turn.innerText || "");
+      turn.dataset.goatedId = id;
+
+      const div = document.createElement("div");
+      div.className = "entry";
+      div.dataset.target = id;
+
+      const title = extractTitle(turn);
+      div.textContent = title.length > 60 ? title.slice(0, 60) + "…" : title;
+
+      div.onclick = () => {
+        turn.scrollIntoView({ behavior: "smooth", block: "center" });
       };
 
       list.appendChild(div);
@@ -164,81 +213,94 @@
     setupIntersection();
   }
 
-  function setupIntersection(){
+  function setupIntersection() {
     intersectionObserver?.disconnect();
-    intersectionObserver=new IntersectionObserver(entries=>{
-      entries.forEach(entry=>{
-        if(!entry.isIntersecting)return;
-        const id=entry.target.dataset.goatedId;
-        const host=document.getElementById(HOST_ID);
-        if(!host)return;
-        const shadow=host.shadowRoot;
-        shadow.querySelectorAll(".entry").forEach(e=>e.classList.remove("active"));
-        const active=shadow.querySelector('.entry[data-target="'+id+'"]');
-        if(active){
+
+    intersectionObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+
+        const id = entry.target.dataset.goatedId;
+        const host = document.getElementById(HOST_ID);
+        if (!host) return;
+
+        const shadow = host.shadowRoot;
+        shadow.querySelectorAll(".entry").forEach(e => e.classList.remove("active"));
+
+        const active = shadow.querySelector('.entry[data-target="' + id + '"]');
+        if (active) {
           active.classList.add("active");
-          active.scrollIntoView({block:"nearest"});
+          active.scrollIntoView({ block: "nearest" });
         }
       });
-    },{rootMargin:"-40% 0px -40% 0px"});
+    }, { rootMargin: "-40% 0px -40% 0px" });
 
-    document.querySelectorAll('[data-goated-id]').forEach(el=>{
+    document.querySelectorAll('[data-goated-id]').forEach(el => {
       intersectionObserver.observe(el);
     });
   }
 
-  function attachObserver(){
-    const main=document.querySelector("main");
-    if(!main)return;
+  function attachObserver() {
+    const main = document.querySelector("main");
+    if (!main) return;
+
     mainObserver?.disconnect();
-    mainObserver=new MutationObserver(debounce(render,300));
-    mainObserver.observe(main,{childList:true,subtree:true});
+    mainObserver = new MutationObserver(debounce(render, 300));
+    mainObserver.observe(main, { childList: true, subtree: true });
   }
 
-  // SPA navigation safe hook
-  if(!window.__goatedNavWrapped){
-    window.__goatedNavWrapped=true;
-    const origPush=history.pushState;
-    history.pushState=function(){
-      origPush.apply(this,arguments);
-      setTimeout(()=>{attachObserver();render();},300);
+  // ==============================
+  // SPA NAVIGATION SAFE
+  // ==============================
+  if (!window.__goatedNavWrapped) {
+    window.__goatedNavWrapped = true;
+
+    const origPush = history.pushState;
+    history.pushState = function () {
+      origPush.apply(this, arguments);
+      setTimeout(initIfNeeded, 300);
     };
-    window.addEventListener("popstate",()=>{
-      setTimeout(()=>{attachObserver();render();},300);
+
+    window.addEventListener("popstate", () => {
+      setTimeout(initIfNeeded, 300);
     });
   }
 
-  buildSidebar();
-  attachObserver();
-  render();
+  function initIfNeeded() {
+    if (!inConversation()) return;
+    if (!document.getElementById(HOST_ID)) buildSidebar();
+    attachObserver();
+    render();
+  }
 
-  window.__goatedSidebar={
-    remove(){
-  mainObserver?.disconnect();
-  intersectionObserver?.disconnect();
-  window.__goatedSidebar._rootObserver?.disconnect();
-  document.getElementById(HOST_ID)?.remove();
-  delete window.__goatedSidebar;
-  console.log("Sidebar removed.");
-}
-
-  };
-  // === DOM Persistence Guard (Prevents Disappearing on Chat Switch) ===
-  const rootObserver = new MutationObserver(() => {
-    if (!document.getElementById(HOST_ID)) {
+  // ==============================
+  // ROOT PERSISTENCE GUARD
+  // ==============================
+  rootObserver = new MutationObserver(() => {
+    if (inConversation() && !document.getElementById(HOST_ID)) {
       buildSidebar();
       attachObserver();
       render();
     }
   });
 
-  rootObserver.observe(document.documentElement, {
-    childList: true,
-    subtree: false
-  });
+  rootObserver.observe(document.documentElement, { childList: true });
 
-  // store reference for clean removal
-  window.__goatedSidebar._rootObserver = rootObserver;
+  // ==============================
+  // INIT
+  // ==============================
+  initIfNeeded();
+
+  window.__goatedSidebar = {
+    remove() {
+      mainObserver?.disconnect();
+      intersectionObserver?.disconnect();
+      rootObserver?.disconnect();
+      document.getElementById(HOST_ID)?.remove();
+      delete window.__goatedSidebar;
+      console.log("Sidebar removed.");
+    }
+  };
 
   console.log("🔥 Goated Chat Index Fully Loaded — by cheemslawg");
 
