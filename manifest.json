@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Goated Chat Sidebar",
+  "version": "1.0",
+  "description": "Adds a sidebar to navigate user requests in chat interfaces.",
+  "permissions": ["activeTab", "scripting"],
+  "action": {
+    "default_title": "Toggle Sidebar"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
